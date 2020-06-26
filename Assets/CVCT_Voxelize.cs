@@ -18,6 +18,7 @@ public class CVCT_Voxelize : MonoBehaviour
     public int drawCascade;
 
     Camera _projectCam;
+    Matrix4x4 _world_to_light_local_matrix;
 
 
     void UpdateVoxelization()
@@ -82,6 +83,13 @@ public class CVCT_Voxelize : MonoBehaviour
 
         RenderTexture.ReleaseTemporary(dummy_target);
         cb_gv.Release();
+
+        /* the scale in _world_to_light_local_matrix is such that the 0th cascade
+         * corresponds to the box from (-1,-1,-1) to (+1,+1,+1).
+         */
+        float sz = 0.5f * gridResolution * gridPixelSize;
+        var mat = Matrix4x4.Scale(Vector3.one / sz) * cam.transform.worldToLocalMatrix;
+        _world_to_light_local_matrix = mat;
     }
 
     Camera FetchProjectionCamera()
@@ -125,6 +133,18 @@ public class CVCT_Voxelize : MonoBehaviour
     }
 
 
+    void SetGlobalUniforms()
+    {
+        var v = Vector4.zero;
+        v.x = gridResolution;
+        v.y = 1f / gridCascades;
+
+        Shader.SetGlobalVector("_CVCT_GridResolution", v);
+        Shader.SetGlobalMatrix("_CVCT_WorldToLightLocalMatrix", _world_to_light_local_matrix);
+        Shader.SetGlobalTexture("_CVCT_LightTex3d", _tex3d_light);
+    }
+
+
     /*********************************************************************/
 
     RenderTexture _tex3d_gv;
@@ -133,6 +153,7 @@ public class CVCT_Voxelize : MonoBehaviour
     private void Start()
     {
         DestroyTargets();
+        UpdateLights();
     }
 
     void DestroyTarget(ref RenderTexture tex)
@@ -178,7 +199,7 @@ public class CVCT_Voxelize : MonoBehaviour
         return tg;
     }
 
-    void Update()
+    public void UpdateLights()
     {
         if (_tex3d_gv != null && _tex3d_gv.width == gridResolution && _tex3d_gv.height == gridResolution * gridCascades &&
             _tex3d_light != null && _tex3d_light.width == gridResolution && _tex3d_light.height == gridResolution * gridCascades)
@@ -201,9 +222,16 @@ public class CVCT_Voxelize : MonoBehaviour
 
         _tex3d_light.Create();
         UpdateTracing();
+
+        SetGlobalUniforms();
     }
 
 #if UNITY_EDITOR
+    void Update()
+    {
+        UpdateLights();
+    }
+
     void OnDrawGizmos()
     {
         if (drawGizmosGV)
