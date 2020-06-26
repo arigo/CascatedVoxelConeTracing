@@ -14,7 +14,7 @@ public class CVCT_Voxelize : MonoBehaviour
 
     public Shader gvShader;
     public ComputeShader gvCompute;
-    public bool drawGizmosGV;
+    public bool drawGizmosGV, drawGizmosLight;
     public int drawCascade;
 
     Camera _projectCam;
@@ -108,7 +108,27 @@ public class CVCT_Voxelize : MonoBehaviour
 
     /*********************************************************************/
 
+    void UpdateTracing()
+    {
+        int tracing_kernel = gvCompute.FindKernel("TracingKernel");
+        gvCompute.SetInt("GridResolution", gridResolution);
+        gvCompute.SetInt("GridHalfResolution", gridResolution / 2);
+        gvCompute.SetTexture(tracing_kernel, "CVCT_tex3d", _tex3d_gv);
+        gvCompute.SetTexture(tracing_kernel, "LightTex3d", _tex3d_light);
+
+        for (int i = 0; i < gridCascades; i++)
+        {
+            int thread_groups = (gridResolution + 3) / 4;
+            gvCompute.SetInts("GridCascadeBase", i * gridResolution, (gridCascades - 1) * gridResolution);
+            gvCompute.Dispatch(tracing_kernel, thread_groups, thread_groups, thread_groups);
+        }
+    }
+
+
+    /*********************************************************************/
+
     RenderTexture _tex3d_gv;
+    RenderTexture _tex3d_light;
 
     private void Start()
     {
@@ -125,6 +145,7 @@ public class CVCT_Voxelize : MonoBehaviour
     void DestroyTargets()
     {
         DestroyTarget(ref _tex3d_gv);
+        DestroyTarget(ref _tex3d_light);
     }
 
     RenderTexture CreateTex3dGV()
@@ -142,27 +163,53 @@ public class CVCT_Voxelize : MonoBehaviour
         return tg;
     }
 
+    RenderTexture CreateTex3dLight()
+    {
+        var desc = new RenderTextureDescriptor(gridResolution, gridResolution * gridCascades, RenderTextureFormat.R8);
+        desc.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
+        desc.volumeDepth = gridResolution;
+        desc.enableRandomWrite = true;
+        desc.useMipMap = false;
+        desc.autoGenerateMips = false;
+
+        RenderTexture tg = new RenderTexture(desc);
+        tg.wrapMode = TextureWrapMode.Clamp;
+        tg.filterMode = FilterMode.Bilinear;
+        return tg;
+    }
+
     void Update()
     {
-        if (_tex3d_gv != null && _tex3d_gv.width != gridResolution)
+        if (_tex3d_gv != null && _tex3d_gv.width == gridResolution && _tex3d_gv.height == gridResolution * gridCascades &&
+            _tex3d_light != null && _tex3d_light.width == gridResolution && _tex3d_light.height == gridResolution * gridCascades)
+        {
+            /* already up-to-date */
+        }
+        else
+        {
             DestroyTargets();
 
-        if (_tex3d_gv == null)
-        {
             if (gridResolution <= 0 || gridCascades <= 0)
                 return;
+            Debug.Log("Creating render textures");
             _tex3d_gv = CreateTex3dGV();
+            _tex3d_light = CreateTex3dLight();
         }
-        _tex3d_gv.Create();
 
+        _tex3d_gv.Create();
         UpdateVoxelization();
+
+        _tex3d_light.Create();
+        UpdateTracing();
     }
 
 #if UNITY_EDITOR
     void OnDrawGizmos()
     {
         if (drawGizmosGV)
-            DrawGizmosGV(_tex3d_gv);
+            DrawGizmos(_tex3d_gv, false);
+        if (drawGizmosLight)
+            DrawGizmos(_tex3d_light, true);
     }
 
     float[] DrawGizmosExtract(RenderTexture rt, int cascade)
@@ -185,7 +232,7 @@ public class CVCT_Voxelize : MonoBehaviour
         return array;
     }
 
-    void DrawGizmosGV(RenderTexture rt)
+    void DrawGizmos(RenderTexture rt, bool is_light)
     {
         if (!rt)
             return;
@@ -223,12 +270,23 @@ public class CVCT_Voxelize : MonoBehaviour
                 for (int x = 0; x < gridResolution; x++)
                 {
                     float entry = array[index++];
-                    if (entry != 0f)
+                    if (!is_light)
                     {
+                        if (entry == 1f)
+                            continue;
                         gizmos.Add(System.Tuple.Create(
                             new Vector3(x + dd, y + dd, z + dd),
-                            entry * 0.5f,
+                            (1 - entry) * 0.5f,
                             (Color32)new Color(0.5f, 0.5f, 0.5f, 1)));
+                    }
+                    else
+                    {
+                        if (entry == 1f)
+                            continue;
+                        gizmos.Add(System.Tuple.Create(
+                            new Vector3(x + dd, y + dd, z + dd),
+                            0.3f,
+                            (Color32)new Color(entry, entry, entry, 1)));
                     }
                 }
 

@@ -3,6 +3,7 @@
 #pragma kernel RepackAndUpscaleKernel
 #pragma kernel DebugKernel
 #pragma kernel DebugWriteRandomKernel
+#pragma kernel TracingKernel
 
 
 /**********************************************************************************/
@@ -10,6 +11,7 @@
 
 RWStructuredBuffer<int> CVCT_gv;
 RWTexture3D<float> CVCT_tex3d;
+RWTexture3D<float> LightTex3d;
 uint GridResolution, GridHalfResolution;
 uint2 GridCascadeBase;
 
@@ -27,7 +29,7 @@ void ClearKernel(uint3 id : SV_DispatchThreadID)
 void RepackLvl0Kernel(uint3 id : SV_DispatchThreadID)
 {
     uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
-    CVCT_tex3d[id] = CVCT_gv[src_index];
+    CVCT_tex3d[id] = 1 - CVCT_gv[src_index];
 }
 
 [numthreads(4, 4, 4)]
@@ -41,10 +43,12 @@ void RepackAndUpscaleKernel(uint3 id : SV_DispatchThreadID)
         id1.y += GridCascadeBase.y;
 
         float4 ff;
-        ff.x = max(CVCT_tex3d[id1], CVCT_tex3d[id1 + uint3(0, 0, 1)]);
-        ff.y = max(CVCT_tex3d[id1 + uint3(1, 0, 0)], CVCT_tex3d[id1 + uint3(1, 0, 1)]);
-        ff.z = max(CVCT_tex3d[id1 + uint3(0, 1, 0)], CVCT_tex3d[id1 + uint3(0, 1, 1)]);
-        ff.w = max(CVCT_tex3d[id1 + uint3(1, 1, 0)], CVCT_tex3d[id1 + uint3(1, 1, 1)]);
+        ff.x = min(CVCT_tex3d[id1], CVCT_tex3d[id1 + uint3(0, 0, 1)]);
+        ff.y = min(CVCT_tex3d[id1 + uint3(1, 0, 0)], CVCT_tex3d[id1 + uint3(1, 0, 1)]);
+        ff.z = min(CVCT_tex3d[id1 + uint3(0, 1, 0)], CVCT_tex3d[id1 + uint3(0, 1, 1)]);
+        ff.w = min(CVCT_tex3d[id1 + uint3(1, 1, 0)], CVCT_tex3d[id1 + uint3(1, 1, 1)]);
+
+        ff = 1 - ff;
         
         //f = dot(ff, float4(0.25, 0.25, 0.25, 0.25));
         f = dot(ff, float4(0.5, 0.5, 0.5, 0.5));
@@ -56,7 +60,7 @@ void RepackAndUpscaleKernel(uint3 id : SV_DispatchThreadID)
         f = CVCT_gv[src_index];
     }
     id.y += GridCascadeBase.x;
-    CVCT_tex3d[id] = f;
+    CVCT_tex3d[id] = 1 - f;
 }
 
 [numthreads(4, 4, 4)]
@@ -67,10 +71,93 @@ void DebugKernel(uint3 id : SV_DispatchThreadID)
     ExtractTexture[index] = ExtractSource[id];
 }
 
-
 [numthreads(4, 4, 4)]
 void DebugWriteRandomKernel(uint3 id : SV_DispatchThreadID)
 {
-    CVCT_tex3d[id] = 1;
+    CVCT_tex3d[id] = 0;
 }
 
+float SampleGV(float3 p)
+{
+    /* similar to tex3d(p), but I think we can't use tex3d here... */
+    uint3 ip = (uint3)p;
+    float3 fr = p - ip;
+
+    float4 c0 = float4(
+        CVCT_tex3d[ip],
+        CVCT_tex3d[ip + uint3(0, 0, 1)],
+        CVCT_tex3d[ip + uint3(0, 1, 0)],
+        CVCT_tex3d[ip + uint3(0, 1, 1)]);
+
+    float4 c1 = float4(
+        CVCT_tex3d[ip + uint3(1, 0, 0)],
+        CVCT_tex3d[ip + uint3(1, 0, 1)],
+        CVCT_tex3d[ip + uint3(1, 1, 0)],
+        CVCT_tex3d[ip + uint3(1, 1, 1)]);
+
+    float4 cx = lerp(c0, c1, fr.x);          /* (x,0,0) (x,0,1) (x,1,0) (x,1,1) */
+    float2 cxy = lerp(cx.xy, cx.zw, fr.y);   /* (x,y,0) (x,y,1) */
+    float cxyz = lerp(cxy.x, cxy.y, fr.z);   /* (x,y,z) */
+    return cxyz;
+}
+
+[numthreads(4, 4, 4)]
+void TracingKernel(uint3 id : SV_DispatchThreadID)
+{
+    float3 pos = id - (GridHalfResolution - 0.5);
+
+    float3 central_pos = abs(pos);
+    float central_distance = max(central_pos.x, max(central_pos.y, central_pos.z));
+    /* central_distance should be close to 0 in the middle and up to ~max_distance.
+       We want max_distance to map to epxand=2, and max_distance / 2 to map to expand=1.
+     */
+    float max_distance = GridHalfResolution - 0.5;
+    central_distance /= max_distance;    /* 1 => expand=2, 0.5 => expand=1 */
+    float expand = max(log2(central_distance) + 2, 1);
+
+    float alpha = 1;
+
+    uint grid_cascade_base = GridCascadeBase.x;
+
+    while (1)
+    {
+        if (expand >= 2.0)
+        {
+            if (grid_cascade_base >= GridCascadeBase.y)
+                break;
+            grid_cascade_base += GridResolution;
+            expand *= 0.5;
+            pos *= 0.5;
+        }
+
+        float3 p = pos + (GridHalfResolution - 0.5);
+        p.y += grid_cascade_base;
+        float a_low = SampleGV(p);
+
+        float a_high;
+        if (grid_cascade_base >= GridCascadeBase.y)
+        {
+            a_high = 1;
+        }
+        else
+        {
+            float3 q = pos * 0.5 + (GridHalfResolution - 0.5);
+            q.y += grid_cascade_base + GridResolution;
+            a_high = SampleGV(q);
+        }
+        
+        float a = lerp(a_low, a_high, expand - 1);
+
+        const float SAMPLE_STEP_BASE = 0.45;
+        const float EXPAND_STEP = 1.21;
+
+        float sample_step = SAMPLE_STEP_BASE * expand;
+
+        alpha *= pow(a, sample_step);
+        pos.z -= sample_step;
+        expand *= EXPAND_STEP;
+    }
+
+    id.y += GridCascadeBase.x;
+    LightTex3d[id] = alpha;
+}

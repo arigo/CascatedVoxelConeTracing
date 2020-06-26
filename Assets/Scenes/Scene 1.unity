@@ -525,8 +525,9 @@ MonoBehaviour:
     m_Bits: 4294967295
   gvShader: {fileID: 4800000, guid: 9495c431e1a9dea4eb1379d3f4c23bb3, type: 3}
   gvCompute: {fileID: 7200000, guid: 66402ca1a7c909a469122dcc655beddd, type: 3}
-  drawGizmosGV: 1
-  drawCascade: 2
+  drawGizmosGV: 0
+  drawGizmosLight: 1
+  drawCascade: 3
 --- !u!4 &1209605626
 Transform:
   m_ObjectHideFlags: 0
