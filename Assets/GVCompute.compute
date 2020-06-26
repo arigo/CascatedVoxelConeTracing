@@ -1,0 +1,76 @@
+﻿#pragma kernel ClearKernel
+#pragma kernel RepackLvl0Kernel
+#pragma kernel RepackAndUpscaleKernel
+#pragma kernel DebugKernel
+#pragma kernel DebugWriteRandomKernel
+
+
+/**********************************************************************************/
+
+
+RWStructuredBuffer<int> CVCT_gv;
+RWTexture3D<float> CVCT_tex3d;
+uint GridResolution, GridHalfResolution;
+uint2 GridCascadeBase;
+
+RWStructuredBuffer<float> ExtractTexture;
+Texture3D<float> ExtractSource;
+
+
+[numthreads(64, 1, 1)]
+void ClearKernel(uint3 id : SV_DispatchThreadID)
+{
+    CVCT_gv[id.x] = 0;
+}
+
+[numthreads(4, 4, 4)]
+void RepackLvl0Kernel(uint3 id : SV_DispatchThreadID)
+{
+    uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    CVCT_tex3d[id] = CVCT_gv[src_index];
+}
+
+[numthreads(4, 4, 4)]
+void RepackAndUpscaleKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint3 id1 = id * 2 - GridHalfResolution;
+    float f;
+    if (all(id1 < GridResolution))
+    {
+        uint src_index = (id1.z * GridResolution + id1.y) * GridResolution + id1.x;
+        id1.y += GridCascadeBase.y;
+
+        float4 ff;
+        ff.x = max(CVCT_tex3d[id1], CVCT_tex3d[id1 + uint3(0, 0, 1)]);
+        ff.y = max(CVCT_tex3d[id1 + uint3(1, 0, 0)], CVCT_tex3d[id1 + uint3(1, 0, 1)]);
+        ff.z = max(CVCT_tex3d[id1 + uint3(0, 1, 0)], CVCT_tex3d[id1 + uint3(0, 1, 1)]);
+        ff.w = max(CVCT_tex3d[id1 + uint3(1, 1, 0)], CVCT_tex3d[id1 + uint3(1, 1, 1)]);
+        
+        //f = dot(ff, float4(0.25, 0.25, 0.25, 0.25));
+        f = dot(ff, float4(0.5, 0.5, 0.5, 0.5));
+        /* f = min(f, 1);  automatic by assigning to an R8 texture */
+    }
+    else
+    {
+        uint src_index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+        f = CVCT_gv[src_index];
+    }
+    id.y += GridCascadeBase.x;
+    CVCT_tex3d[id] = f;
+}
+
+[numthreads(4, 4, 4)]
+void DebugKernel(uint3 id : SV_DispatchThreadID)
+{
+    uint index = (id.z * GridResolution + id.y) * GridResolution + id.x;
+    id.y += GridCascadeBase.x;
+    ExtractTexture[index] = ExtractSource[id];
+}
+
+
+[numthreads(4, 4, 4)]
+void DebugWriteRandomKernel(uint3 id : SV_DispatchThreadID)
+{
+    CVCT_tex3d[id] = 1;
+}
+
