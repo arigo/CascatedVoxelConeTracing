@@ -517,17 +517,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   directionalLight: {fileID: 705507994}
-  gridResolution: 64
-  gridPixelSize: 0.02
+  gridResolution: 16
+  gridPixelSize: 0.04
   gridCascades: 12
   cullingMask:
     serializedVersion: 2
     m_Bits: 55
   gvShader: {fileID: 4800000, guid: 9495c431e1a9dea4eb1379d3f4c23bb3, type: 3}
   gvCompute: {fileID: 7200000, guid: 66402ca1a7c909a469122dcc655beddd, type: 3}
-  drawGizmosGV: 0
+  drawGizmosGV: 1
   drawGizmosLight: 0
-  drawCascade: 2
+  drawCascade: 5
 --- !u!4 &1209605626
 Transform:
   m_ObjectHideFlags: 0
@@ -628,8 +628,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1239521577}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -1.52, z: 0}
-  m_LocalScale: {x: 2, y: 2, z: 2}
+  m_LocalPosition: {x: 0, y: -0.85, z: 0}
+  m_LocalScale: {x: 5, y: 5, z: 5}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 4

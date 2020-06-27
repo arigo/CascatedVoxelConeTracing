@@ -141,8 +141,8 @@ public class CVCT_Voxelize : MonoBehaviour
         var v = Vector4.zero;
         v.x = gridResolution;
         v.y = 1f / gridCascades;
-        v.z = 1f / gap;
-        v.w = gap;
+        v.z = 1f / gap + 1f;
+        //v.w = gap;
 
         Shader.SetGlobalVector("_CVCT_GridResolution", v);
         Shader.SetGlobalMatrix("_CVCT_WorldToLightLocalMatrix", _world_to_light_local_matrix);
@@ -314,7 +314,7 @@ public class CVCT_Voxelize : MonoBehaviour
                     }
                     else
                     {
-                        if (entry == 1f)
+                        if (entry > 0.9f)
                             continue;
                         gizmos.Add(System.Tuple.Create(
                             new Vector3(x + dd, y + dd, z + dd),
