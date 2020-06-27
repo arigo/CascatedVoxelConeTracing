@@ -27,7 +27,8 @@ public class CVCT_Voxelize : MonoBehaviour
         var trackTransform = directionalLight.transform;
         cam.transform.SetPositionAndRotation(trackTransform.position, trackTransform.rotation);
 
-        Shader.SetGlobalInt("_CVCT_GridResolution", gridResolution);
+        /* XXX replace with a float array */
+        Shader.SetGlobalInt("_CVCT_GridResolutionI", gridResolution);
 
 #if UNITY_EDITOR
         {
@@ -135,9 +136,13 @@ public class CVCT_Voxelize : MonoBehaviour
 
     void SetGlobalUniforms()
     {
+        float gap = gridResolution * 0.5f;
+
         var v = Vector4.zero;
         v.x = gridResolution;
         v.y = 1f / gridCascades;
+        v.z = 1f / gap;
+        v.w = gap;
 
         Shader.SetGlobalVector("_CVCT_GridResolution", v);
         Shader.SetGlobalMatrix("_CVCT_WorldToLightLocalMatrix", _world_to_light_local_matrix);

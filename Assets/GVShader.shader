@@ -43,7 +43,7 @@
             };
 
             RWStructuredBuffer<int> _CVCT_gv : register(u1);
-            int _CVCT_GridResolution;
+            int _CVCT_GridResolutionI;
             
             /* these come from the properties of the replaced shader */
             //float4 _Color;
@@ -68,7 +68,7 @@
 #if defined(UNITY_REVERSED_Z)
                 xyz.z = 1 - xyz.z;
 #endif
-                xyz.z *= _CVCT_GridResolution * 0.99999;   /* makes sure 0 <= pos.z < GridResolution */
+                xyz.z *= _CVCT_GridResolutionI * 0.99999;   /* makes sure 0 <= pos.z < GridResolution */
 
                 int3 pos = int3(xyz);
 
@@ -85,7 +85,7 @@
                 int index = dot(pos, int3(1, _CVCT_GridResolution, _CVCT_GridResolution * _CVCT_GridResolution));
                 InterlockedMax(_CVCT_gv[index], color);*/
 
-                int index = dot(pos, int3(1, _CVCT_GridResolution, _CVCT_GridResolution * _CVCT_GridResolution));
+                int index = dot(pos, int3(1, _CVCT_GridResolutionI, _CVCT_GridResolutionI * _CVCT_GridResolutionI));
                 _CVCT_gv[index] = 1;
             }
             ENDCG

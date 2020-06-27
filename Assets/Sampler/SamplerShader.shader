@@ -64,14 +64,31 @@
                           <= 4            2
                           <= 8            3
                  */
-                float cascade = ceil(log2(max(1.0, central_distance)));
+                float cascade_f = log2(max(1.0, central_distance)) + _CVCT_GridResolution.z;
+                float cascade = ceil(cascade_f);
 
                 pos *= pow(0.5, cascade);       /* (-1,-1,-1) to (+1,+1,+1) in the right cascade */
+                float3 pos1 = pos;
                 pos = pos * 0.5 + 0.5;            /* (0,0,0) to (1,1,1) */
                 pos.y += cascade;                    /* (0,c,0) to (1,1+c,1) */
                 pos.y *= _CVCT_GridResolution.y;       /* rescale along y */
 
                 float light = pos.y < 1 ? tex3D(_CVCT_LightTex3d, pos).r : 1;
+
+                float fr = frac(cascade_f) + _CVCT_GridResolution.z;
+                if (fr > 1)
+                {
+                    fr = (fr - 1) * _CVCT_GridResolution.w;
+
+                    pos = pos1 * 0.5;              /* in the next bigger cascade */
+                    pos = pos * 0.5 + 0.5;            /* (0,0,0) to (1,1,1) */
+                    pos.y += cascade + 1;                /* (0,1+c,0) to (1,2+c,1) */
+                    pos.y *= _CVCT_GridResolution.y;       /* rescale along y */
+
+                    float light2 = pos.y < 1 ? tex3D(_CVCT_LightTex3d, pos).r : 1;
+
+                    light = lerp(light, light2, fr);
+                }
 
                 /*uint root = DebugFragment(i.vertex);
                 DbgValue4(root, float4(pos, light));*/
